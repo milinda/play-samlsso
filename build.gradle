@@ -1,0 +1,14 @@
+apply plugin: 'java'
+
+version = '0.1-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '2.0'
+}
