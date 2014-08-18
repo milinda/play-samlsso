@@ -16,7 +16,7 @@
 
 package org.pathirage.play.samlsso;
 
-public class Constants {
-    public static final String SSO_SESSION_ID = "play_sso_session_id";
-    public static final String TEXT_HTML_CONTENT_TYPE = "text/html; charset=utf-8";
+import play.mvc.Controller;
+
+public class SAMLSSOJavaController  extends Controller{
 }

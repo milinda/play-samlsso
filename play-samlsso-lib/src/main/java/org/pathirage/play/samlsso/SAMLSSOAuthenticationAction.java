@@ -41,11 +41,9 @@ public class SAMLSSOAuthenticationAction extends Action<Result> {
 
         if(!SSOSessionStorageHelper.isSSOSessionExists(session)){
             sessionId = SSOSessionStorageHelper.createSession(session);
-
-            // This is a new session we need to redirect to Identity Provider
-        } else {
-            // We need to check whether SSO related information is there in the session.
         }
+
+        // Check whether user profile information there and initiate SSO process
 
         return null;
     }
