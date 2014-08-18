@@ -1,12 +1,26 @@
-apply plugin: 'java'
+allprojects {
+    apply plugin: 'java'
+    apply plugin: 'maven'
 
-version = '0.1-SNAPSHOT'
+    group = 'org.pathirage'
+    version = '0.1-SNAPSHOT'
 
-repositories {
-    mavenCentral()
+    repositories {
+        mavenCentral()
+
+        maven {
+            url "http://repo.typesafe.com/typesafe/releases"
+        }
+    }
 }
 
-dependencies {
+project('play-samlsso-lib'){
+
+    dependencies {
+        compile 'com.typesafe.play:play_2.10:2.2.2'
+        compile 'com.typesafe.play:play-cache_2.10:2.2.2'
+    }
+
 }
 
 task wrapper(type: Wrapper) {
