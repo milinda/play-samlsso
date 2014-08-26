@@ -17,8 +17,10 @@
 package org.pathirage.play.samlsso.session;
 
 import org.pathirage.play.samlsso.Constants;
+import org.pathirage.play.samlsso.UserProfile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.cache.Cache;
 import play.mvc.Http.Session;
 
 import java.util.UUID;
@@ -70,5 +72,9 @@ public class SSOSessionStorageHelper {
         }
 
         return sessionId;
+    }
+
+    public static UserProfile getUserProfile(String sessionId){
+        return (UserProfile)Cache.get(sessionId);
     }
 }

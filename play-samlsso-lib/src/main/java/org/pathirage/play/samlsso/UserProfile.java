@@ -16,21 +16,20 @@
 
 package org.pathirage.play.samlsso;
 
-import play.api.http.ContentTypes;
-import play.libs.F;
-import play.mvc.Result;
-import static play.mvc.Results.*;
+public class UserProfile {
 
-public class SAMLSSOHelper {
+    public String userName;
 
-    public F.Promise<Result> buildAuthenticationRequest(){
-        F.Promise<Result> promise = F.Promise.promise(new F.Function0<Result>() {
-            @Override
-            public Result apply() throws Throwable {
-                return ok().as(Constants.TEXT_HTML_CONTENT_TYPE);
-            }
-        });
+    public String email;
 
-        return promise;
+    public String firstName;
+
+    public String lastName;
+
+    public UserProfile(String userName, String email, String firstName, String lastName) {
+        this.userName = userName;
+        this.email = email;
+        this.firstName = firstName;
+        this.lastName = lastName;
     }
 }

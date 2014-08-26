@@ -36,7 +36,7 @@ public class SAMLSSOAuthenticationAction extends Action<Result> {
     @SuppressWarnings("unchecked")
     public Promise<SimpleResult> call(Http.Context ctx) throws Throwable {
         Session session = ctx.session();
-        String sessionId;
+        String sessionId = null;
         String tagrgetUrl = ctx.request().uri();
 
         if(!SSOSessionStorageHelper.isSSOSessionExists(session)){
@@ -44,6 +44,11 @@ public class SAMLSSOAuthenticationAction extends Action<Result> {
         }
 
         // Check whether user profile information there and initiate SSO process
+        UserProfile userProfile = SSOSessionStorageHelper.getUserProfile(sessionId);
+
+        if(userProfile == null){
+            return SAMLSSOManager.INSTANCE.buildAuthenticationRequest(ctx.request());
+        }
 
         return null;
     }

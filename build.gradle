@@ -19,6 +19,10 @@ project('play-samlsso-lib'){
     dependencies {
         compile 'com.typesafe.play:play_2.10:2.2.2'
         compile 'com.typesafe.play:play-cache_2.10:2.2.2'
+        compile 'org.opensaml:opensaml:2.4.1'
+        compile 'org.apache.amber:amber-oauth2-client:0.22-incubating'
+        compile 'com.google.code.gson:gson:2.2.2'
+        compile 'com.google.guava:guava:17.0'
     }
 
 }

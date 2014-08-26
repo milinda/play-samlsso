@@ -1,7 +1,10 @@
 play-samlsso
 ============
 
-SAML 2.0 SSO for Play Framework. Only supports Play Java and tested with WSO2 Identity Server.
+SAML 2.0 SSO for Play Framework with OAuth2 grant support. Only supports Play Java and tested with WSO2 Identity Server.
+
+This project was inspired by [play-pac4j](https://github.com/leleuj/play-pac4j) library. I wanted to create a framework 
+which supports SAML 2.0 SSO with OAuth2 grant. 
 
 ## Design and Usage
 
@@ -28,6 +31,7 @@ public static Result protectedResource(){
  * ```authenticatedCB``` - Identity provider should redirect back to this action after the authentication is done as a request from service provider. 
  * ```singleLogoutCB``` - Identity provider will send a request to this URL to complete single logout request from a other service provider.
  * ```singleLogout``` - If you need single logout support in your application, you can call this action.
+
 
 
 Copyright © 2014 Milinda Pathirage

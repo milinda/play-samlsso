@@ -1,0 +1,11 @@
+<component name="libraryTable">
+  <library name="Gradle: amber-oauth2-client-0.22-incubating">
+    <CLASSES>
+      <root url="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/org.apache.amber/amber-oauth2-client/0.22-incubating/d37adc8f9943f9a6c1b1062e72185286ff1ff99b/amber-oauth2-client-0.22-incubating.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES>
+      <root url="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/org.apache.amber/amber-oauth2-client/0.22-incubating/1db7d9bb25f6ae24b6759d52bbd226bab80b88fc/amber-oauth2-client-0.22-incubating-sources.jar!/" />
+    </SOURCES>
+  </library>
+</component>
