@@ -38,6 +38,7 @@ public class SAMLSSOAuthenticationAction extends Action<Result> {
         Session session = ctx.session();
         String sessionId = null;
         String tagrgetUrl = ctx.request().uri();
+        String absoluteTargetUrl = getAbsoluteUrl(tagrgetUrl, ctx);
 
         if(!SSOSessionStorageHelper.isSSOSessionExists(session)){
             sessionId = SSOSessionStorageHelper.createSession(session);
@@ -47,9 +48,32 @@ public class SAMLSSOAuthenticationAction extends Action<Result> {
         UserProfile userProfile = SSOSessionStorageHelper.getUserProfile(sessionId);
 
         if(userProfile == null){
-            return SAMLSSOManager.INSTANCE.buildAuthenticationRequest(ctx.request());
+            return SAMLSSOManager.INSTANCE.buildAuthenticationRequest(ctx, absoluteTargetUrl);
         }
 
         return null;
+    }
+
+    private String getAbsoluteUrl(String url, Http.Context ctx){
+        if(url != null && !url.startsWith("http://") && !url.startsWith("https://")){
+            StringBuilder stringBuilder = new StringBuilder();
+            // TODO: Add support for https and proxying.
+            String[] parts = ctx.request().host().split(":");
+            String serverName = parts[0];
+            String port = parts.length > 1 ? parts[1] : "80";
+
+
+            stringBuilder.append("http://").append(serverName).append(port);
+
+            if(url.startsWith("/")){
+                stringBuilder.append(url);
+            } else {
+                stringBuilder.append("/").append(url);
+            }
+
+            return stringBuilder.toString();
+        }
+
+        return url;
     }
 }

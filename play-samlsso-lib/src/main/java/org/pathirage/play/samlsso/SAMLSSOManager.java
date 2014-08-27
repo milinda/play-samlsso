@@ -17,10 +17,19 @@
 package org.pathirage.play.samlsso;
 
 import com.google.common.base.Preconditions;
+import org.apache.velocity.app.VelocityEngine;
+import org.apache.velocity.runtime.RuntimeConstants;
 import org.joda.time.DateTime;
 import org.opensaml.common.SAMLVersion;
+import org.opensaml.common.binding.BasicSAMLMessageContext;
+import org.opensaml.common.binding.SAMLMessageContext;
 import org.opensaml.common.xml.SAMLConstants;
-import org.opensaml.saml2.core.*;
+import org.opensaml.saml2.binding.decoding.HTTPPostDecoder;
+import org.opensaml.saml2.binding.encoding.HTTPPostEncoder;
+import org.opensaml.saml2.core.AuthnRequest;
+import org.opensaml.saml2.core.Issuer;
+import org.opensaml.saml2.core.NameIDPolicy;
+import org.opensaml.saml2.core.NameIDType;
 import org.opensaml.saml2.core.impl.AuthnRequestBuilder;
 import org.opensaml.saml2.core.impl.IssuerBuilder;
 import org.opensaml.saml2.core.impl.NameIDPolicyBuilder;
@@ -31,14 +40,16 @@ import org.opensaml.saml2.metadata.provider.MetadataProviderException;
 import org.opensaml.xml.XMLObject;
 import org.opensaml.xml.parse.StaticBasicParserPool;
 import org.opensaml.xml.parse.XMLParserException;
-import org.opensaml.xml.security.*;
+import org.opensaml.xml.security.CriteriaSet;
 import org.opensaml.xml.security.SecurityException;
+import org.opensaml.xml.security.SecurityHelper;
 import org.opensaml.xml.security.credential.Credential;
 import org.opensaml.xml.security.credential.CredentialResolver;
 import org.opensaml.xml.security.credential.KeyStoreCredentialResolver;
 import org.opensaml.xml.security.credential.UsageType;
 import org.opensaml.xml.security.criteria.EntityIDCriteria;
 import org.opensaml.xml.signature.KeyInfo;
+import org.pathirage.play.samlsso.utils.InMemoryOutTransport;
 import play.libs.F;
 import play.mvc.Http;
 import play.mvc.SimpleResult;
@@ -49,12 +60,13 @@ import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.util.*;
 
-import static play.mvc.Results.forbidden;
 import static play.mvc.Results.ok;
 
 public enum SAMLSSOManager {
 
     INSTANCE;
+
+    public static final String SAML2_WEBSSO_PROFILE_URI = "urn:oasis:names:tc:SAML:2.0:profiles:SSO:browser";
 
     private String privateKeyAlias;
 
@@ -77,6 +89,12 @@ public enum SAMLSSOManager {
     private IDPSSODescriptor idpSSODescriptor;
 
     private SPSSODescriptor spSSODescriptor;
+
+    private VelocityEngine velocityEngine;
+
+    private HTTPPostEncoder samlEncoder;
+
+    private HTTPPostDecoder samlDecoder;
 
     public void setSpEntityId(String spEntityId) {
         this.spEntityId = spEntityId;
@@ -121,7 +139,7 @@ public enum SAMLSSOManager {
 
         StaticBasicParserPool parserPool = new StaticBasicParserPool();
 
-        try{
+        try {
             parserPool.initialize();
         } catch (XMLParserException e) {
             throw new RuntimeException("Unable to initialize parser pool.", e);
@@ -129,7 +147,7 @@ public enum SAMLSSOManager {
 
         FilesystemMetadataProvider idpMetadataProvider;
 
-        try{
+        try {
             idpMetadataProvider = new FilesystemMetadataProvider(new Timer(true), new File(idpMetadataXMLPath));
             idpMetadataProvider.setParserPool(parserPool);
             idpMetadataProvider.initialize();
@@ -139,25 +157,37 @@ public enum SAMLSSOManager {
 
         try {
             XMLObject idpMetadata = idpMetadataProvider.getMetadata();
-            if(idpMetadata instanceof EntitiesDescriptor){
-                for(EntityDescriptor entityDescriptor : ((EntitiesDescriptor)idpMetadata).getEntityDescriptors()){
+            if (idpMetadata instanceof EntitiesDescriptor) {
+                for (EntityDescriptor entityDescriptor : ((EntitiesDescriptor) idpMetadata).getEntityDescriptors()) {
                     // Select the first entity descriptor
                     this.identityProviderEntityId = entityDescriptor.getEntityID();
                     break;
                 }
-            } else if(idpMetadata instanceof EntitiesDescriptor){
-                this.identityProviderEntityId = ((EntityDescriptor)idpMetadata).getEntityID();
+            } else if (idpMetadata instanceof EntitiesDescriptor) {
+                this.identityProviderEntityId = ((EntityDescriptor) idpMetadata).getEntityID();
             }
 
-            this.idpSSODescriptor = (IDPSSODescriptor)idpMetadataProvider.getRole(this.identityProviderEntityId, IDPSSODescriptor.DEFAULT_ELEMENT_NAME, SAMLConstants.SAML20P_NS);
+            this.idpSSODescriptor = (IDPSSODescriptor) idpMetadataProvider.getRole(this.identityProviderEntityId, IDPSSODescriptor.DEFAULT_ELEMENT_NAME, SAMLConstants.SAML20P_NS);
         } catch (MetadataProviderException e) {
             throw new RuntimeException("Couldn't get metadata from identity provider metadata provider.", e);
         }
 
         buildSPSSODescriptor();
+
+        try {
+            velocityEngine = getClassPathVelocityEngine();
+            samlEncoder = new HTTPPostEncoder(velocityEngine, "/templates/saml2-post-binding.vm");
+
+            // TODO: Validate the use of this.
+            samlDecoder = new HTTPPostDecoder(parserPool);
+        } catch (Exception e) {
+            throw new RuntimeException("Cannot initiate classpath velocity engine.");
+        }
+
+
     }
 
-    private void buildSPSSODescriptor(){
+    private void buildSPSSODescriptor() {
         SPSSODescriptorBuilder builder = new SPSSODescriptorBuilder();
         SPSSODescriptor spSSODescriptor = builder.buildObject();
 
@@ -185,7 +215,7 @@ public enum SAMLSSOManager {
 
     }
 
-    private SingleLogoutService genSingleLogoutService(){
+    private SingleLogoutService genSingleLogoutService() {
         SingleLogoutServiceBuilder singleLogoutServiceBuilder = new SingleLogoutServiceBuilder();
         SingleLogoutService singleLogoutService = singleLogoutServiceBuilder.buildObject();
 
@@ -195,8 +225,8 @@ public enum SAMLSSOManager {
         return singleLogoutService;
     }
 
-    private Credential getSPCredential(){
-        try{
+    private Credential getSPCredential() {
+        try {
             CriteriaSet criteriaSet = new CriteriaSet();
             EntityIDCriteria entityIDCriteria = new EntityIDCriteria(this.privateKeyAlias);
 
@@ -208,24 +238,24 @@ public enum SAMLSSOManager {
         }
     }
 
-    private KeyInfo credentialToKeyInfo(Credential credential){
-        try{
+    private KeyInfo credentialToKeyInfo(Credential credential) {
+        try {
             return SecurityHelper.getKeyInfoGenerator(credential, null, "SPMetadataKeyInfoGenerator").generate(credential);
         } catch (SecurityException e) {
             throw new RuntimeException("Cannot generate key info from credential.", e);
         }
     }
 
-    private KeyDescriptor genKeyDescriptor(UsageType usageType, KeyInfo keyInfo){
+    private KeyDescriptor genKeyDescriptor(UsageType usageType, KeyInfo keyInfo) {
         KeyDescriptorBuilder keyDescriptorBuilder = new KeyDescriptorBuilder();
         KeyDescriptor keyDescriptor = keyDescriptorBuilder.buildObject();
         keyDescriptor.setUse(usageType);
         keyDescriptor.setKeyInfo(keyInfo);
 
-        return  keyDescriptor;
+        return keyDescriptor;
     }
 
-    private Collection<NameIDFormat> buildNameIDFormats(){
+    private Collection<NameIDFormat> buildNameIDFormats() {
         Collection<NameIDFormat> nameIDFormats = new ArrayList<NameIDFormat>();
 
         NameIDFormatBuilder builder = new NameIDFormatBuilder();
@@ -253,7 +283,7 @@ public enum SAMLSSOManager {
             keyStore.load(keyStoreInputStream, keyStorePassword == null ? null : keyStorePassword.toCharArray());
 
             Enumeration<String> aliaes = keyStore.aliases();
-            if(aliaes.hasMoreElements()){
+            if (aliaes.hasMoreElements()) {
                 this.privateKeyAlias = aliaes.nextElement();
             } else {
                 throw new RuntimeException("No private keys found in key store.");
@@ -287,7 +317,7 @@ public enum SAMLSSOManager {
      *
      * @return authentication request as a play redirect.
      */
-    public F.Promise<SimpleResult> buildAuthenticationRequest(Http.Request request) {
+    public F.Promise<SimpleResult> buildAuthenticationRequest(Http.Context context, final String currentTargetUrl) {
         IssuerBuilder issuerBuilder = new IssuerBuilder();
         Issuer issuer = issuerBuilder.buildObject("urn:oasis:names:tc:SAML:2.0:assertion",
                 "Issuer", "samla");
@@ -302,9 +332,11 @@ public enum SAMLSSOManager {
         nameIDPolicy.setAllowCreate(true);
 
         AuthnRequestBuilder authnRequestBuilder = new AuthnRequestBuilder();
-        AuthnRequest authnRequest = authnRequestBuilder.buildObject("urn:oasis:names:tc:SAML:2.0:protocol",
+        final AuthnRequest authnRequest = authnRequestBuilder.buildObject("urn:oasis:names:tc:SAML:2.0:protocol",
                 "AuthnRequest", "samlp");
 
+        Random random = new Random();
+        authnRequest.setID(Long.toHexString(random.nextLong()) + '_' + Long.toHexString(random.nextLong()));
         authnRequest.setVersion(SAMLVersion.VERSION_20);
         authnRequest.setIsPassive(false);
         authnRequest.setForceAuthn(false);
@@ -319,16 +351,40 @@ public enum SAMLSSOManager {
         F.Promise<SimpleResult> promise = F.Promise.promise(new F.Function0<SimpleResult>() {
             @Override
             public SimpleResult apply() throws Throwable {
-                return ok().as(Constants.TEXT_HTML_CONTENT_TYPE);
+                SingleSignOnService ssoService = getSSOServiceForPostBinding(idpSSODescriptor);
+
+                SAMLMessageContext messageContext = new BasicSAMLMessageContext();
+                messageContext.setCommunicationProfileId(SAML2_WEBSSO_PROFILE_URI);
+                messageContext.setOutboundMessage(authnRequest);
+                messageContext.setOutboundSAMLMessage(authnRequest);
+                messageContext.setPeerEntityEndpoint(ssoService);
+
+                // Setting url of the current request as relay state. So callback can redirect to correct resource.
+                messageContext.setRelayState(currentTargetUrl);
+
+                messageContext.setOutboundSAMLMessageSigningCredential(getSPCredential());
+
+                // Prevent OpenSAML from sending post message and record message in byte array output stream.
+                // Based on pac4j.
+                messageContext.setOutboundMessageTransport(new InMemoryOutTransport());
+
+                // TODO: How to handle exception thrown here.
+                samlEncoder.encode(messageContext);
+
+                // We can do this safely because we are using our own outbound transport.
+                // This generate a html form with idp saml sso url set as forms action.
+                String content = messageContext.getOutboundMessageTransport().getOutgoingStream().toString();
+
+                return ok(content).as(Constants.TEXT_HTML_CONTENT_TYPE);
             }
         });
 
         return promise;
     }
 
-    private SingleSignOnService getSSOServiceForPostBinding(IDPSSODescriptor idpssoDescriptor){
-        for(SingleSignOnService singleSignOnService : idpssoDescriptor.getSingleSignOnServices()){
-            if(singleSignOnService.getBinding().equals(SAMLConstants.SAML2_POST_BINDING_URI)){
+    private SingleSignOnService getSSOServiceForPostBinding(IDPSSODescriptor idpssoDescriptor) {
+        for (SingleSignOnService singleSignOnService : idpssoDescriptor.getSingleSignOnServices()) {
+            if (singleSignOnService.getBinding().equals(SAMLConstants.SAML2_POST_BINDING_URI)) {
                 return singleSignOnService;
             }
         }
@@ -336,15 +392,34 @@ public enum SAMLSSOManager {
         throw new RuntimeException("IDP doesn't have single sign on service available for post binding.");
     }
 
-    private AssertionConsumerService getAssertionConsumerServiceForSP(SPSSODescriptor spssoDescriptor){
-        if(spssoDescriptor.getDefaultAssertionConsumerService() != null){
+    private AssertionConsumerService getAssertionConsumerServiceForSP(SPSSODescriptor spssoDescriptor) {
+        if (spssoDescriptor.getDefaultAssertionConsumerService() != null) {
             return spssoDescriptor.getDefaultAssertionConsumerService();
         }
 
-        if(spssoDescriptor.getAssertionConsumerServices().size() > 0){
+        if (spssoDescriptor.getAssertionConsumerServices().size() > 0) {
             return spssoDescriptor.getAssertionConsumerServices().get(0);
         }
 
         throw new RuntimeException("SP doesn't have assertion consumer service defined.");
+    }
+
+    /**
+     * Based on https://joinup.ec.europa.eu/svn/moa-idspss/branches/1.5.2-stork-integration/id/server/idserverlib/src/main/java/at/gv/egovernment/moa/id/auth/stork/VelocityProvider.java
+     *
+     * @return classpath velocity engine.
+     * @throws Exception
+     */
+    private VelocityEngine getClassPathVelocityEngine() throws Exception {
+        VelocityEngine velocityEngine = new VelocityEngine();
+        velocityEngine.setProperty(RuntimeConstants.ENCODING_DEFAULT, "UTF-8");
+        velocityEngine.setProperty(RuntimeConstants.OUTPUT_ENCODING, "UTF-8");
+        velocityEngine.setProperty(RuntimeConstants.RESOURCE_LOADER, "classpath");
+        velocityEngine.setProperty("classpath.resource.loader.class",
+                "org.apache.velocity.runtime.resource.loader.ClasspathResourceLoader");
+
+        velocityEngine.init();
+
+        return velocityEngine;
     }
 }
