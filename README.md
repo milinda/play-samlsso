@@ -15,6 +15,7 @@ which supports SAML 2.0 SSO with OAuth2 grant.
  in the session.
  
  3.1 If there is a valida session, action will hand over the request to actual web action.
+ 
  3.2 If no valid session is found, action will start the SSO process from step 4.
  
 4. 
