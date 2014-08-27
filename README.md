@@ -1,5 +1,4 @@
-play-samlsso
-============
+# play-samlsso
 
 SAML 2.0 SSO for Play Framework with OAuth2 grant support. Only supports Play Java and tested with WSO2 Identity Server.
 
@@ -7,6 +6,16 @@ This project was inspired by [play-pac4j](https://github.com/leleuj/play-pac4j) 
 which supports SAML 2.0 SSO with OAuth2 grant. 
 
 ## Design and Usage
+
+### Authentication Flow
+
+1. User tries to access specific URL of Play App.
+2. If the above URL is secured using @RequiresAuthentication annotation, RequiresAuthenticationAction will get invoked.
+3. This action will check for whether there is a existing session and whether required user profile information is there
+ in the session.
+ 3.1 If there is a valida session, action will hand over the request to actual web action.
+ 3.2 If no valid session is found, action will start the SSO process from step 4.
+4. 
 
 Your Play controllers must extend ```SAMLSSOJavaController``` class for Play Java application.
 
