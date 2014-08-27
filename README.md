@@ -10,7 +10,7 @@ which supports SAML 2.0 SSO with OAuth2 grant.
 ### Authentication Flow
 
 1. User tries to access specific URL of Play App.
-2. If the above URL is secured using @RequiresAuthentication annotation, RequiresAuthenticationAction will get invoked.
+2. If the above URL is secured using ```@RequiresAuthentication``` annotation, ```RequiresAuthenticationAction``` will get invoked.
 3. This action will check for whether there is a existing session and whether required user profile information is there
  in the session.
  
@@ -18,7 +18,14 @@ which supports SAML 2.0 SSO with OAuth2 grant.
  
  3.2 If no valid session is found, action will start the SSO process from step 4.
  
-4. 
+4. ```RequiresAuthenticationAction``` will get the URL for the current request and pass that to ```SAMLSSOManager``` for 
+building authentication request.
+5. Using the service providers key information, configuration and identity provider meta data, ```SAMLSSOManager``` will 
+  build authentication request (Redirect response) and send it back to user's browser as the response.
+6. This redirect response will take user to identity provider and identity provider may ask for authenticating into it. 
+After successful authentication, user will get redirected to service providers callback URL with *RelayState* parameter.
+7. Once the SSO authentication response is received at the service provider, SP will validate the response, setup the session and redirect 
+user to correct URL based on RelayState.
 
 Your Play controllers must extend ```SAMLSSOJavaController``` class for Play Java application.
 
