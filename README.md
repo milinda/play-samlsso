@@ -3,7 +3,9 @@
 SAML 2.0 SSO for Play Framework with OAuth2 grant support. Only supports Play Java and tested with WSO2 Identity Server.
 
 This project was inspired by [play-pac4j](https://github.com/leleuj/play-pac4j) library. Also some parts are directly 
-based on SAML implementation of [pac4j](https://github.com/leleuj/pac4j).  
+based on SAML implementation of [pac4j](https://github.com/leleuj/pac4j). Main reason behind creating this library is to
+  understand SAML SSO internals and have more control over how SSO is done. Also I am planning to implement [AML 2.0 
+    Profile for OAuth2 Client Authentication and Authorization Grants](http://tools.ietf.org/html/draft-ietf-oauth-saml2-bearer-21) on top of this.
 
 ## Design and Usage
 
