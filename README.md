@@ -13,8 +13,10 @@ which supports SAML 2.0 SSO with OAuth2 grant.
 2. If the above URL is secured using @RequiresAuthentication annotation, RequiresAuthenticationAction will get invoked.
 3. This action will check for whether there is a existing session and whether required user profile information is there
  in the session.
+ 
  3.1 If there is a valida session, action will hand over the request to actual web action.
  3.2 If no valid session is found, action will start the SSO process from step 4.
+ 
 4. 
 
 Your Play controllers must extend ```SAMLSSOJavaController``` class for Play Java application.
