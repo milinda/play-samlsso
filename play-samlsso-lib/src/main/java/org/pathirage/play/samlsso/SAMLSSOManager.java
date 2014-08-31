@@ -20,12 +20,15 @@ import com.google.common.base.Preconditions;
 import org.apache.velocity.app.VelocityEngine;
 import org.apache.velocity.runtime.RuntimeConstants;
 import org.joda.time.DateTime;
+import org.opensaml.Configuration;
 import org.opensaml.common.SAMLVersion;
 import org.opensaml.common.binding.BasicSAMLMessageContext;
 import org.opensaml.common.binding.SAMLMessageContext;
+import org.opensaml.common.binding.security.SAMLProtocolMessageXMLSignatureSecurityPolicyRule;
 import org.opensaml.common.xml.SAMLConstants;
 import org.opensaml.saml2.binding.decoding.HTTPPostDecoder;
 import org.opensaml.saml2.binding.encoding.HTTPPostEncoder;
+import org.opensaml.saml2.binding.security.SAML2HTTPPostSimpleSignRule;
 import org.opensaml.saml2.core.AuthnRequest;
 import org.opensaml.saml2.core.Issuer;
 import org.opensaml.saml2.core.NameIDPolicy;
@@ -35,9 +38,14 @@ import org.opensaml.saml2.core.impl.IssuerBuilder;
 import org.opensaml.saml2.core.impl.NameIDPolicyBuilder;
 import org.opensaml.saml2.metadata.*;
 import org.opensaml.saml2.metadata.impl.*;
-import org.opensaml.saml2.metadata.provider.FilesystemMetadataProvider;
-import org.opensaml.saml2.metadata.provider.MetadataProviderException;
+import org.opensaml.saml2.metadata.provider.*;
+import org.opensaml.security.MetadataCredentialResolver;
+import org.opensaml.ws.message.decoder.MessageDecodingException;
+import org.opensaml.ws.security.SecurityPolicy;
+import org.opensaml.ws.security.provider.BasicSecurityPolicy;
+import org.opensaml.ws.security.provider.StaticSecurityPolicyResolver;
 import org.opensaml.xml.XMLObject;
+import org.opensaml.xml.parse.ParserPool;
 import org.opensaml.xml.parse.StaticBasicParserPool;
 import org.opensaml.xml.parse.XMLParserException;
 import org.opensaml.xml.security.CriteriaSet;
@@ -49,7 +57,9 @@ import org.opensaml.xml.security.credential.KeyStoreCredentialResolver;
 import org.opensaml.xml.security.credential.UsageType;
 import org.opensaml.xml.security.criteria.EntityIDCriteria;
 import org.opensaml.xml.signature.KeyInfo;
+import org.opensaml.xml.signature.impl.ExplicitKeySignatureTrustEngine;
 import org.pathirage.play.samlsso.utils.InMemoryOutTransport;
+import org.pathirage.play.samlsso.utils.PlayInTransport;
 import play.libs.F;
 import play.mvc.Http;
 import play.mvc.SimpleResult;
@@ -90,11 +100,17 @@ public enum SAMLSSOManager {
 
     private SPSSODescriptor spSSODescriptor;
 
+    private EntityDescriptor spMetadata;
+
+    private ChainingMetadataProvider globalMetadataProvider;
+
     private VelocityEngine velocityEngine;
 
     private HTTPPostEncoder samlEncoder;
 
     private HTTPPostDecoder samlDecoder;
+
+    private ParserPool parserPool;
 
     public void setSpEntityId(String spEntityId) {
         this.spEntityId = spEntityId;
@@ -145,6 +161,8 @@ public enum SAMLSSOManager {
             throw new RuntimeException("Unable to initialize parser pool.", e);
         }
 
+        this.parserPool = parserPool;
+
         FilesystemMetadataProvider idpMetadataProvider;
 
         try {
@@ -174,6 +192,15 @@ public enum SAMLSSOManager {
 
         buildSPSSODescriptor();
 
+        this.globalMetadataProvider = new ChainingMetadataProvider();
+
+        try {
+            this.globalMetadataProvider.addMetadataProvider(idpMetadataProvider);
+            this.globalMetadataProvider.addMetadataProvider(getSPMetadataProvider());
+        } catch (MetadataProviderException e) {
+            throw new RuntimeException("Cannot add sp or idp metadata providers.", e);
+        }
+
         try {
             velocityEngine = getClassPathVelocityEngine();
             samlEncoder = new HTTPPostEncoder(velocityEngine, "/templates/saml2-post-binding.vm");
@@ -185,6 +212,22 @@ public enum SAMLSSOManager {
         }
 
 
+    }
+
+    private MetadataProvider getSPMetadataProvider(){
+        EntityDescriptorBuilder entityDescriptorBuilder = new EntityDescriptorBuilder();
+        EntityDescriptor entityDescriptor = entityDescriptorBuilder.buildObject();
+        entityDescriptor.setEntityID(this.spEntityId);
+        entityDescriptor.getRoleDescriptors().add(this.spSSODescriptor);
+
+        this.spMetadata = entityDescriptor;
+
+        return new AbstractMetadataProvider() {
+            @Override
+            protected XMLObject doGetMetadata() throws MetadataProviderException {
+                return spMetadata;
+            }
+        };
     }
 
     private void buildSPSSODescriptor() {
@@ -380,6 +423,52 @@ public enum SAMLSSOManager {
         });
 
         return promise;
+    }
+
+    public F.Promise<SimpleResult> processAuthenticationResponse(Http.Request request, Http.Response response, Http.Session session){
+        BasicSAMLMessageContext samlMessageContext = new BasicSAMLMessageContext();
+
+        samlMessageContext.setInboundMessageTransport(new PlayInTransport(request, response, session));
+        samlMessageContext.setLocalEntityId(spEntityId);
+        samlMessageContext.setLocalEntityRole(SSODescriptor.DEFAULT_ELEMENT_NAME);
+        // TODO: Looks like full entity descriptor is also required. Test and add it if role metadata is not enough.
+        samlMessageContext.setLocalEntityRoleMetadata(spSSODescriptor);
+        // TODO: May be peer entity descriptor is also required.
+        samlMessageContext.setPeerEntityRoleMetadata(idpSSODescriptor);
+        samlMessageContext.setInboundSAMLProtocol(SAMLConstants.SAML20P_NS);
+
+        ExplicitKeySignatureTrustEngine signatureTrustEngine = new ExplicitKeySignatureTrustEngine(new MetadataCredentialResolver(globalMetadataProvider), Configuration.getGlobalSecurityConfiguration().getDefaultKeyInfoCredentialResolver());
+
+
+        SecurityPolicy securityPolicy = new BasicSecurityPolicy();
+        securityPolicy.getPolicyRules().add(new SAML2HTTPPostSimpleSignRule(signatureTrustEngine, parserPool, signatureTrustEngine.getKeyInfoResolver()));
+        securityPolicy.getPolicyRules().add(new SAMLProtocolMessageXMLSignatureSecurityPolicyRule(signatureTrustEngine));
+
+        StaticSecurityPolicyResolver securityPolicyResolver = new StaticSecurityPolicyResolver(securityPolicy);
+
+        samlMessageContext.setSecurityPolicyResolver(securityPolicyResolver);
+
+        try {
+            this.samlDecoder.decode(samlMessageContext);
+        } catch (Exception e) {
+            throw new RuntimeException("Unable to decode authentication response.", e);
+        }
+
+        if(samlMessageContext.getPeerEntityMetadata() == null){
+            throw new RuntimeException("Cannot find IDP metadata");
+        }
+
+        samlMessageContext.setPeerEntityId(samlMessageContext.getPeerEntityMetadata().getEntityID());
+        samlMessageContext.setCommunicationProfileId(SAML2_WEBSSO_PROFILE_URI);
+
+
+        return F.Promise.promise(new F.Function0<SimpleResult>() {
+            @Override
+            public SimpleResult apply() throws Throwable {
+                // TODO: Fill rest.
+                return null;
+            }
+        });
     }
 
     private SingleSignOnService getSSOServiceForPostBinding(IDPSSODescriptor idpssoDescriptor) {
