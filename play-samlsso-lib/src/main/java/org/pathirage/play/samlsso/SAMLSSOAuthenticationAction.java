@@ -42,6 +42,8 @@ public class SAMLSSOAuthenticationAction extends Action<Result> {
 
         if(!SSOSessionStorageHelper.isSSOSessionExists(session)){
             sessionId = SSOSessionStorageHelper.createSession(session);
+        } else {
+            sessionId = SSOSessionStorageHelper.getSessionId(session);
         }
 
         // Check whether user profile information there and initiate SSO process
@@ -51,7 +53,7 @@ public class SAMLSSOAuthenticationAction extends Action<Result> {
             return SAMLSSOManager.INSTANCE.buildAuthenticationRequest(ctx, absoluteTargetUrl);
         }
 
-        return null;
+        return delegate.call(ctx);
     }
 
     private String getAbsoluteUrl(String url, Http.Context ctx){
