@@ -1,3 +1,6 @@
+# Development Halted Temporarily
+I have to halt development temporarily due to lack of time. I am planning to add single logout support and do other required modifications to pac4j 1.5.1 and play-pac4j 1.2.1 which works with Play 2.2.2. 
+
 # play-samlsso
 
 SAML 2.0 SSO for Play Framework with OAuth2 grant support. Only supports Play Java and tested with WSO2 Identity Server.
